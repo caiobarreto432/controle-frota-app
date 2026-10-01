@@ -1,0 +1,54 @@
+﻿# Miscellaneous & System
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+Thumbs.db
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+
+# IDE & Editor files
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+
+# Sensitive Credentials & Secrets (Security Protection)
+*.env
+*.env.*
+*.keystore
+*.jks
+*.p12
+*.pem
+key.properties
+google-services.json
+GoogleService-Info.plist
+secrets.json
+
+# Flutter / Dart / Pub build artifacts
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Obfuscation & Symbols
+app.*.symbols
+app.*.map.json
+
+# Android Studio & Build Artifacts
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Widget Preview
+.widget_preview/
