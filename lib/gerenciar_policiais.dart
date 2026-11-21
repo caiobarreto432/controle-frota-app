@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 import 'config.dart';
+import 'models/policial_model.dart';
 import 'services/session_manager.dart';
 import 'widgets/fundo_pmba.dart';
 
@@ -26,22 +27,16 @@ class _GerenciarPoliciaisPageState extends State<GerenciarPoliciaisPage> {
 
   final ImagePicker picker = ImagePicker();
 
-  List<dynamic> policiais = [];
+  List<PolicialModel> policiais = [];
 
   File? fotoSelecionada;
 
   bool carregando = false;
-  String matriculaAdmin = '';
 
   @override
   void initState() {
     super.initState();
-    inicializar();
-  }
-
-  Future<void> inicializar() async {
-    matriculaAdmin = await SessionManager.getMatricula();
-    await carregarPoliciais();
+    carregarPoliciais();
   }
 
   Future<void> escolherFoto() async {
@@ -126,10 +121,11 @@ class _GerenciarPoliciaisPageState extends State<GerenciarPoliciaisPage> {
   Future<void> carregarPoliciais() async {
     try {
       final headers = await SessionManager.getAuthHeaders();
-      headers['x-admin-matricula'] = matriculaAdmin;
-
       final resposta = await http
-          .get(Uri.parse(ApiConfig.policiaisUri.toString()), headers: headers)
+          .get(
+            ApiConfig.policiaisUri,
+            headers: headers,
+          )
           .timeout(const Duration(seconds: 10));
 
       if (!mounted) return;
@@ -139,11 +135,17 @@ class _GerenciarPoliciaisPageState extends State<GerenciarPoliciaisPage> {
 
         if (dados is List) {
           setState(() {
-            policiais = dados;
+            policiais = dados
+                .whereType<Map>()
+                .map((item) =>
+                    PolicialModel.fromMap(Map<String, dynamic>.from(item)))
+                .toList();
           });
         }
       } else {
-        mostrarMensagem('Erro ao carregar policiais:\n${resposta.body}');
+        mostrarMensagem(
+          'Erro ao carregar policiais:\n${resposta.body}',
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -184,12 +186,11 @@ class _GerenciarPoliciaisPageState extends State<GerenciarPoliciaisPage> {
     try {
       final requisicao = http.MultipartRequest(
         'POST',
-        Uri.parse(ApiConfig.policiaisUri.toString()),
+        ApiConfig.policiaisUri,
       );
 
-      final headers = await SessionManager.getAuthHeaders();
-      requisicao.headers.addAll(headers);
-      requisicao.headers['x-admin-matricula'] = matriculaAdmin;
+      final authHeaders = await SessionManager.getAuthHeaders(includeJsonContentType: false);
+      requisicao.headers.addAll(authHeaders);
 
       requisicao.fields['nome'] = nome;
       requisicao.fields['matricula'] = matricula;
@@ -274,11 +275,9 @@ class _GerenciarPoliciaisPageState extends State<GerenciarPoliciaisPage> {
 
     try {
       final headers = await SessionManager.getAuthHeaders();
-      headers['x-admin-matricula'] = matriculaAdmin;
-
       final resposta = await http
           .put(
-            Uri.parse(ApiConfig.policialDesativarUri(id).toString()),
+            ApiConfig.policialDesativarUri(id),
             headers: headers,
           )
           .timeout(const Duration(seconds: 10));
@@ -290,7 +289,9 @@ class _GerenciarPoliciaisPageState extends State<GerenciarPoliciaisPage> {
 
         mostrarMensagem('Policial desativado.');
       } else {
-        mostrarMensagem('Erro ao desativar:\n${resposta.body}');
+        mostrarMensagem(
+          'Erro ao desativar:\n${resposta.body}',
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -356,48 +357,6 @@ class _GerenciarPoliciaisPageState extends State<GerenciarPoliciaisPage> {
     );
   }
 
-  Widget _buildItemInfoRow({
-    required IconData icon,
-    required String label,
-    required String valor,
-    Color? colorValue,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 16,
-            color: const Color(0xFFC3B091).withValues(alpha: 0.8),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '$label: ',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              valor,
-              style: TextStyle(
-                color: colorValue ?? Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 2,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return FundoPMBA(
@@ -444,7 +403,10 @@ class _GerenciarPoliciaisPageState extends State<GerenciarPoliciaisPage> {
                     const SizedBox(height: 24),
                     _buildTextField(nomeController, 'Nome completo'),
                     const SizedBox(height: 16),
-                    _buildTextField(patenteController, 'Patente'),
+                    _buildTextField(
+                      patenteController,
+                      'Patente',
+                    ),
                     const SizedBox(height: 16),
                     _buildTextField(
                       matriculaController,
@@ -565,233 +527,90 @@ class _GerenciarPoliciaisPageState extends State<GerenciarPoliciaisPage> {
                   ),
                 ),
               ...policiais.map((policial) {
-                final id = policial['id']?.toString() ?? '';
-                final nome = policial['nome']?.toString() ?? '';
-                final matricula = policial['matricula']?.toString() ?? '';
-                final patente = policial['patente']?.toString() ?? '';
-                final email = policial['email']?.toString() ?? '';
-                final celular =
-                    (policial['numero_celular'] ??
-                            policial['celular'] ??
-                            policial['telefone'])
-                        ?.toString() ??
-                    '';
-                final perfil = policial['perfil']?.toString() ?? '';
-                final ativo = policial['ativo'] == true;
-                final foto = policial['foto']?.toString();
+                final nome = policial.nome;
+                final matricula = policial.matricula;
+                final patente = policial.patente ?? '';
+                final email = policial.email ?? '';
+                final celular = policial.numeroCelular ?? '';
+                final perfil = policial.perfil;
+                final ativo = policial.ativo;
+                final foto = policial.foto;
+
+                final subtituloLinhas = [
+                  if (patente.isNotEmpty) 'Patente: $patente',
+                  'Matrícula: $matricula',
+                  if (email.isNotEmpty) 'E-mail: $email',
+                  if (celular.isNotEmpty) 'Celular: $celular',
+                  'Perfil: $perfil',
+                  'Status: ${ativo ? "Ativo" : "Inativo"}',
+                ].join('\n');
 
                 return Card(
                   color: const Color(0x0CFFFFFF),
                   elevation: 0,
-                  margin: const EdgeInsets.only(bottom: 16),
+                  margin: const EdgeInsets.only(bottom: 12),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(16),
                     side: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.12),
+                      color: Colors.white.withValues(alpha: 0.1),
                     ),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: ativo
-                                      ? Colors.greenAccent
-                                      : Colors.grey,
-                                  width: 2,
-                                ),
-                              ),
-                              child: CircleAvatar(
-                                radius: 26,
-                                backgroundColor: const Color(0x26000000),
-                                backgroundImage:
-                                    (foto != null && foto.isNotEmpty)
-                                    ? NetworkImage(ApiConfig.urlFoto(foto))
-                                    : null,
-                                child: (foto == null || foto.isEmpty)
-                                    ? Text(
-                                        nome.isNotEmpty
-                                            ? nome[0].toUpperCase()
-                                            : '?',
-                                        style: const TextStyle(
-                                          color: Color(0xFFC3B091),
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 20,
-                                        ),
-                                      )
-                                    : null,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    nome.isNotEmpty
-                                        ? nome
-                                        : 'Policial sem nome',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Wrap(
-                                    spacing: 6,
-                                    runSpacing: 4,
-                                    children: [
-                                      if (patente.isNotEmpty)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFC3B091)
-                                                .withValues(alpha: 0.2),
-                                            borderRadius: BorderRadius.circular(
-                                              6,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            patente,
-                                            style: const TextStyle(
-                                              color: Color(0xFFC3B091),
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.blueAccent.withValues(
-                                            alpha: 0.2,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            6,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          perfil.isNotEmpty
-                                              ? perfil
-                                              : 'POLICIAL',
-                                          style: const TextStyle(
-                                            color: Colors.blueAccent,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: ativo
-                                        ? Colors.green.withValues(alpha: 0.2)
-                                        : Colors.red.withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    ativo ? 'Ativo' : 'Inativo',
-                                    style: TextStyle(
-                                      color: ativo
-                                          ? Colors.greenAccent
-                                          : Colors.redAccent,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                if (ativo)
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.block,
-                                      color: Colors.redAccent,
-                                      size: 20,
-                                    ),
-                                    tooltip: 'Desativar Policial',
-                                    onPressed: () {
-                                      desativarPolicial(
-                                        policial['id'].toString(),
-                                        nome,
-                                      );
-                                    },
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Divider(color: Colors.white12, height: 1),
-                        ),
-                        _buildItemInfoRow(
-                          icon: Icons.fingerprint,
-                          label: 'ID no Sistema',
-                          valor: id.isNotEmpty ? id : 'N/A',
-                        ),
-                        _buildItemInfoRow(
-                          icon: Icons.badge,
-                          label: 'Matrícula',
-                          valor: matricula.isNotEmpty
-                              ? matricula
-                              : 'Não informada',
-                        ),
-                        _buildItemInfoRow(
-                          icon: Icons.shield,
-                          label: 'Patente / Graduação',
-                          valor: patente.isNotEmpty ? patente : 'Não informada',
-                        ),
-                        _buildItemInfoRow(
-                          icon: Icons.email,
-                          label: 'E-mail',
-                          valor: email.isNotEmpty ? email : 'Não informado',
-                        ),
-                        _buildItemInfoRow(
-                          icon: Icons.phone,
-                          label: 'Celular / Telefone',
-                          valor: celular.isNotEmpty ? celular : 'Não informado',
-                        ),
-                        _buildItemInfoRow(
-                          icon: Icons.admin_panel_settings,
-                          label: 'Perfil de Acesso',
-                          valor: perfil.isNotEmpty ? perfil : 'POLICIAL',
-                        ),
-                        _buildItemInfoRow(
-                          icon: Icons.check_circle_outline,
-                          label: 'Status no Sistema',
-                          valor: ativo
-                              ? 'Ativo (Acesso Liberado)'
-                              : 'Inativo (Acesso Bloqueado)',
-                          colorValue: ativo
-                              ? Colors.greenAccent
-                              : Colors.redAccent,
-                        ),
-                      ],
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
                     ),
+                    leading: foto != null && foto.isNotEmpty
+                        ? CircleAvatar(
+                            radius: 24,
+                            backgroundImage: NetworkImage(
+                              ApiConfig.urlFoto(foto),
+                            ),
+                          )
+                        : CircleAvatar(
+                            radius: 24,
+                            backgroundColor: const Color(0x26000000),
+                            child: Text(
+                              nome.isNotEmpty ? nome[0].toUpperCase() : '?',
+                              style: const TextStyle(
+                                color: Color(0xFFC3B091),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                    title: Text(
+                      nome,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        subtituloLinhas,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.6),
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                    isThreeLine: true,
+                    trailing: ativo
+                        ? IconButton(
+                            icon: const Icon(
+                              Icons.block,
+                              color: Colors.redAccent,
+                            ),
+                            tooltip: 'Desativar',
+                            onPressed: () {
+                              desativarPolicial(
+                                policial.id.toString(),
+                                nome,
+                              );
+                            },
+                          )
+                        : const Icon(Icons.person_off, color: Colors.grey),
                   ),
                 );
               }),

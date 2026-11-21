@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -31,13 +31,13 @@ class _LoginPageState extends State<LoginPage> {
     final senha = _senhaController.text;
 
     if (matricula.isEmpty || senha.isEmpty) {
-      _mostrarErro('Por favor, preencha a matricula e a senha.');
+      _mostrarErro('Por favor, preencha a matrícula e a senha.');
       return;
     }
 
     // Sanitização e validação de formato da matrícula (somente dígitos alfanuméricos)
     if (!RegExp(r'^[a-zA-Z0-9]+$').hasMatch(matricula)) {
-      _mostrarErro('A matricula deve conter apenas numeros ou letras.');
+      _mostrarErro('A matrícula deve conter apenas números ou letras.');
       return;
     }
 
@@ -60,6 +60,7 @@ class _LoginPageState extends State<LoginPage> {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final usuario = (data['usuario'] as Map<String, dynamic>?) ?? {};
 
+        final tokenSalvo = data['token']?.toString() ?? '';
         final matriculaSalva = usuario['matricula']?.toString() ?? matricula;
         final nomeSalvo = usuario['nome']?.toString() ?? '';
         final perfilSalvo = usuario['perfil']?.toString() ?? 'POLICIAL';
@@ -69,6 +70,7 @@ class _LoginPageState extends State<LoginPage> {
           matricula: matriculaSalva,
           nome: nomeSalvo,
           perfil: perfilSalvo,
+          token: tokenSalvo,
         );
 
         if (!mounted) return;
@@ -77,12 +79,18 @@ class _LoginPageState extends State<LoginPage> {
           MaterialPageRoute(builder: (_) => const FormularioViatura()),
         );
       } else {
-        // Mensagem genérica para evitar vazamento de detalhes internos
-        _mostrarErro('Matricula ou senha incorretos. Tente novamente.');
+        String msgErro = 'Matrícula ou senha incorretos. Tente novamente.';
+        try {
+          final data = jsonDecode(response.body);
+          if (data['mensagem'] != null) {
+            msgErro = data['mensagem'].toString();
+          }
+        } catch (_) {}
+        _mostrarErro(msgErro);
       }
     } on Exception {
       if (!mounted) return;
-      _mostrarErro('Erro de conexao com o servidor. Verifique sua rede.');
+      _mostrarErro('Erro de conexão com o servidor. Verifique sua rede.');
     } finally {
       if (mounted) {
         setState(() {
@@ -137,7 +145,7 @@ class _LoginPageState extends State<LoginPage> {
                   child: Column(
                     children: [
                       const Text(
-                        'POLICIA MILITAR DA BAHIA',
+                        'POLÍCIA MILITAR DA BAHIA',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -160,7 +168,7 @@ class _LoginPageState extends State<LoginPage> {
                         keyboardType: TextInputType.number,
                         style: const TextStyle(color: Colors.white),
                         decoration: InputDecoration(
-                          labelText: 'Matricula',
+                          labelText: 'Matrícula',
                           labelStyle: TextStyle(
                             color: Colors.white.withValues(alpha: 0.5),
                           ),
@@ -231,7 +239,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 48),
                 Text(
-                  'Versao 1.0.0',
+                  'Versão 1.0.0',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.3),
                     fontSize: 12,

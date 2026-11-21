@@ -1,16 +1,15 @@
-import 'widgets/seletor_fotos.dart';
-
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-
-import 'services/session_manager.dart';
-
 import 'package:image_picker/image_picker.dart';
 
 import 'config.dart';
+import 'models/checklist_model.dart';
+import 'services/excel_exporter.dart';
+import 'services/session_manager.dart';
+import 'widgets/seletor_fotos.dart';
 
 /* =========================================================
    VIATURAS
@@ -52,10 +51,11 @@ class _ViaturasPageState extends State<ViaturasPage> {
     });
 
     try {
+      final headers = await SessionManager.getAuthHeaders();
       final response = await http
           .get(
-            Uri.parse(ApiConfig.viaturasUri.toString()),
-            headers: {'x-matricula': matricula, 'Accept': 'application/json'},
+            ApiConfig.viaturasUri,
+            headers: headers,
           )
           .timeout(const Duration(seconds: 10));
 
@@ -81,7 +81,7 @@ class _ViaturasPageState extends State<ViaturasPage> {
       if (response.statusCode != 200) {
         mostrarMensagem(
           'Erro ao carregar viaturas.\n'
-          'CÃ³digo: ${response.statusCode}',
+          'Código: ${response.statusCode}',
         );
       }
     } catch (e) {
@@ -91,7 +91,7 @@ class _ViaturasPageState extends State<ViaturasPage> {
         carregando = false;
       });
 
-      mostrarMensagem('NÃ£o foi possÃ­vel conectar ao servidor.');
+      mostrarMensagem('Não foi possível conectar ao servidor.');
 
       debugPrint('ERRO VIATURAS: $e');
     }
@@ -101,7 +101,7 @@ class _ViaturasPageState extends State<ViaturasPage> {
     final ativo = viatura['ativo'] == true;
 
     if (!ativo) {
-      mostrarMensagem('Esta viatura estÃ¡ desativada.');
+      mostrarMensagem('Esta viatura está desativada.');
       return;
     }
 
@@ -118,10 +118,20 @@ class _ViaturasPageState extends State<ViaturasPage> {
       /*
        * O checklist terminou.
        *
-       * Retorna a viatura para o formulÃ¡rio.
+       * Retorna a viatura para o formulário.
        */
       Navigator.of(context).pop(resultado);
     }
+  }
+
+  Future<void> abrirUltimasVistorias(Map<String, dynamic> viatura) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => HistoricoChecklistsViaturaPage(
+          viatura: Map<String, dynamic>.from(viatura),
+        ),
+      ),
+    );
   }
 
   Future<void> abrirCadastro() async {
@@ -155,20 +165,18 @@ class _ViaturasPageState extends State<ViaturasPage> {
     final id = viatura['id']?.toString();
 
     if (id == null || id.isEmpty) {
-      mostrarMensagem('ID da viatura nÃ£o encontrado.');
+      mostrarMensagem('ID da viatura não encontrado.');
       return;
     }
 
     final ativoAtual = viatura['ativo'] == true;
 
     try {
+      final headers = await SessionManager.getAuthHeaders();
       final response = await http
           .put(
-            Uri.parse(ApiConfig.viaturaStatusUri(id).toString()),
-            headers: {
-              'Content-Type': 'application/json',
-              'x-admin-matricula': matricula,
-            },
+            ApiConfig.viaturaStatusUri(id),
+            headers: headers,
             body: jsonEncode({'ativo': !ativoAtual}),
           )
           .timeout(const Duration(seconds: 10));
@@ -184,13 +192,13 @@ class _ViaturasPageState extends State<ViaturasPage> {
       } else {
         mostrarMensagem(
           'Erro ao alterar status.\n'
-          'CÃ³digo: ${response.statusCode}',
+          'Código: ${response.statusCode}',
         );
       }
     } catch (e) {
       if (!mounted) return;
 
-      mostrarMensagem('Erro de conexÃ£o com o servidor.');
+      mostrarMensagem('Erro de conexão com o servidor.');
 
       debugPrint('ERRO STATUS VIATURA: $e');
     }
@@ -238,7 +246,7 @@ class _ViaturasPageState extends State<ViaturasPage> {
         int.tryParse(viatura['km_restante']?.toString() ?? '') ?? 0;
 
     if (situacao == 'VENCIDA') {
-      return 'ManutenÃ§Ã£o vencida em '
+      return 'Manutenção vencida em '
           '${formatarKm(restante.abs())} km';
     }
 
@@ -247,7 +255,7 @@ class _ViaturasPageState extends State<ViaturasPage> {
           '${formatarKm(restante)} km';
     }
 
-    return 'ManutenÃ§Ã£o em dia';
+    return 'Manutenção em dia';
   }
 
   void mostrarMensagem(String mensagem) {
@@ -351,7 +359,7 @@ class _ViaturasPageState extends State<ViaturasPage> {
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                      Text('$tipo ? $placa'),
+                                      Text('$tipo • $placa'),
                                       if (marca.isNotEmpty || modelo.isNotEmpty)
                                         Text('$marca $modelo'),
                                     ],
@@ -389,7 +397,7 @@ class _ViaturasPageState extends State<ViaturasPage> {
 
                             Text(
                               'KM atual: '
-                              '${formatarKm(viatura['km_atual'])}',
+                              '${formatarKm(viatura['km_atual'])} km',
                             ),
 
                             const SizedBox(height: 8),
@@ -412,11 +420,23 @@ class _ViaturasPageState extends State<ViaturasPage> {
 
                             const SizedBox(height: 8),
 
-                            Text(
-                              ativo
-                                  ? 'Ativa ? '
-                                        '${viatura['status'] ?? 'DISPONÃVEL'}'
-                                  : 'Desativada',
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    ativo
+                                        ? 'Ativa • ${viatura['status'] ?? 'DISPONÍVEL'}'
+                                        : 'Desativada',
+                                  ),
+                                ),
+                                TextButton.icon(
+                                  onPressed: () =>
+                                      abrirUltimasVistorias(viatura),
+                                  icon: const Icon(Icons.history, size: 18),
+                                  label: const Text('ÚLTIMAS VISTORIAS'),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -431,7 +451,7 @@ class _ViaturasPageState extends State<ViaturasPage> {
 }
 
 /* =========================================================
-   CADASTRO / EDIÃ‡ÃƒO DE VIATURA
+   CADASTRO / EDIÇÃO DE VIATURA
 ========================================================= */
 
 class CadastroViaturaPage extends StatefulWidget {
@@ -464,11 +484,19 @@ class _CadastroViaturaPageState extends State<CadastroViaturaPage> {
 
   String tipo = 'CARRO';
 
-  String status = 'DISPONÃVEL';
+  String status = 'DISPONÍVEL';
 
   bool salvando = false;
 
   bool get editando => widget.viatura != null;
+
+  String _normalizarStatusInicial(String? valor) {
+    final bruto = (valor ?? '').trim().toUpperCase();
+    if (bruto.contains('MANUTEN')) return 'EM MANUTENÇÃO';
+    if (bruto == 'RESERVA') return 'RESERVA';
+    if (bruto == 'BAIXADA') return 'BAIXADA';
+    return 'DISPONÍVEL';
+  }
 
   @override
   void initState() {
@@ -496,9 +524,10 @@ class _CadastroViaturaPageState extends State<CadastroViaturaPage> {
 
     observacoesController.text = v['observacoes']?.toString() ?? '';
 
-    tipo = v['tipo']?.toString().toUpperCase() ?? 'CARRO';
+    final tipoBruto = (v['tipo']?.toString() ?? 'CARRO').toUpperCase();
+    tipo = tipoBruto == 'MOTO' ? 'MOTO' : 'CARRO';
 
-    status = v['status']?.toString() ?? 'DISPONÃVEL';
+    status = _normalizarStatusInicial(v['status']?.toString());
   }
 
   Future<void> salvar() async {
@@ -524,7 +553,7 @@ class _CadastroViaturaPageState extends State<CadastroViaturaPage> {
 
     if (kmManutencao < kmAtual) {
       mostrarMensagem(
-        'A prÃ³xima manutenÃ§Ã£o nÃ£o pode ser menor que o KM atual.',
+        'A próxima manutenção não pode ser menor que o KM atual.',
       );
       return;
     }
@@ -534,7 +563,7 @@ class _CadastroViaturaPageState extends State<CadastroViaturaPage> {
     });
 
     try {
-      final matriculaAdmin = await SessionManager.getMatricula();
+      final headers = await SessionManager.getAuthHeaders();
 
       final dados = {
         'prefixo': prefixo,
@@ -562,28 +591,22 @@ class _CadastroViaturaPageState extends State<CadastroViaturaPage> {
             });
           }
 
-          mostrarMensagem('ID da viatura nÃ£o encontrado.');
+          mostrarMensagem('ID da viatura não encontrado.');
           return;
         }
 
         resposta = await http
             .put(
-              Uri.parse(ApiConfig.viaturaEditarUri(id).toString()),
-              headers: {
-                'Content-Type': 'application/json',
-                'x-admin-matricula': matriculaAdmin,
-              },
+              ApiConfig.viaturaEditarUri(id),
+              headers: headers,
               body: jsonEncode(dados),
             )
             .timeout(const Duration(seconds: 10));
       } else {
         resposta = await http
             .post(
-              Uri.parse(ApiConfig.viaturasUri.toString()),
-              headers: {
-                'Content-Type': 'application/json',
-                'x-admin-matricula': matriculaAdmin,
-              },
+              ApiConfig.viaturasUri,
+              headers: headers,
               body: jsonEncode(dados),
             )
             .timeout(const Duration(seconds: 10));
@@ -598,12 +621,12 @@ class _CadastroViaturaPageState extends State<CadastroViaturaPage> {
 
       mostrarMensagem(
         'Erro ao salvar viatura.\n'
-        'CÃ³digo: ${resposta.statusCode}',
+        'Código: ${resposta.statusCode}',
       );
     } catch (e) {
       if (!mounted) return;
 
-      mostrarMensagem('Erro de conexÃ£o com o servidor.');
+      mostrarMensagem('Erro de conexão com o servidor.');
 
       debugPrint('ERRO CADASTRAR VIATURA: $e');
     } finally {
@@ -681,7 +704,7 @@ class _CadastroViaturaPageState extends State<CadastroViaturaPage> {
 
             campo(
               anoController,
-              'Ano de fabricaÃ§Ã£o',
+              'Ano de fabricação',
               teclado: TextInputType.number,
             ),
 
@@ -691,7 +714,7 @@ class _CadastroViaturaPageState extends State<CadastroViaturaPage> {
 
             campo(
               kmManutencaoController,
-              'KM da prÃ³xima manutenÃ§Ã£o',
+              'KM da próxima manutenção',
               teclado: TextInputType.number,
             ),
 
@@ -703,12 +726,12 @@ class _CadastroViaturaPageState extends State<CadastroViaturaPage> {
               ),
               items: const [
                 DropdownMenuItem(
-                  value: 'DISPONÃVEL',
-                  child: Text('DISPONÃVEL'),
+                  value: 'DISPONÍVEL',
+                  child: Text('DISPONÍVEL'),
                 ),
                 DropdownMenuItem(
-                  value: 'EM MANUTENÃ‡ÃƒO',
-                  child: Text('EM MANUTENÃ‡ÃƒO'),
+                  value: 'EM MANUTENÇÃO',
+                  child: Text('EM MANUTENÇÃO'),
                 ),
                 DropdownMenuItem(value: 'RESERVA', child: Text('RESERVA')),
                 DropdownMenuItem(value: 'BAIXADA', child: Text('BAIXADA')),
@@ -733,7 +756,7 @@ class _CadastroViaturaPageState extends State<CadastroViaturaPage> {
               enabled: !salvando,
               maxLines: 4,
               decoration: const InputDecoration(
-                labelText: 'ObservaÃ§Ãµes',
+                labelText: 'Observações',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -782,13 +805,20 @@ class _CadastroViaturaPageState extends State<CadastroViaturaPage> {
 }
 
 /* =========================================================
-   CHECKLIST
+   CHECKLIST (SAÍDA / ASSUNÇÃO E DEVOLUÇÃO / TÉRMINO)
 ========================================================= */
 
 class ChecklistViaturaPage extends StatefulWidget {
   final Map<String, dynamic> viatura;
+  final String tipoChecklist; // 'SAIDA' ou 'RETORNO'
+  final int? kmReferencia;
 
-  const ChecklistViaturaPage({super.key, required this.viatura});
+  const ChecklistViaturaPage({
+    super.key,
+    required this.viatura,
+    this.tipoChecklist = 'SAIDA',
+    this.kmReferencia,
+  });
 
   @override
   State<ChecklistViaturaPage> createState() => _ChecklistViaturaPageState();
@@ -798,6 +828,7 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
   late List<String> itens;
 
   final Map<String, String> respostas = {};
+  final Map<String, TextEditingController> obsItensControllers = {};
 
   final observacaoController = TextEditingController();
 
@@ -807,6 +838,8 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
 
   bool salvando = false;
 
+  bool get isRetorno => widget.tipoChecklist.toUpperCase() == 'RETORNO';
+
   @override
   void initState() {
     super.initState();
@@ -814,41 +847,108 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
     final tipo = (widget.viatura['tipo']?.toString() ?? 'CARRO').toUpperCase();
 
     if (tipo == 'MOTO') {
-      itens = [
-        'Pneus',
-        'Freios',
-        'Ã“leo/Ãgua',
-        'Luzes',
-        'Sirene/Giroflex',
-        'Retrovisores',
-        'Equipamentos',
-        'Corrente/estado geral',
-      ];
+      if (isRetorno) {
+        itens = [
+          'Pneus',
+          'Freios',
+          'Óleo/Água',
+          'Luzes',
+          'Sirene/Giroflex',
+          'Retrovisores',
+          'Equipamentos',
+          'Corrente/estado geral',
+          'Limpeza da moto',
+          'Combustível conferido',
+        ];
+      } else {
+        itens = [
+          'Pneus',
+          'Freios',
+          'Óleo/Água',
+          'Luzes',
+          'Sirene/Giroflex',
+          'Retrovisores',
+          'Equipamentos',
+          'Corrente/estado geral',
+        ];
+      }
     } else {
-      itens = [
-        'Pneus',
-        'Freios',
-        'Ã“leo/Ãgua',
-        'Luzes',
-        'Sirene/Giroflex',
-        'Vidros/retrovisores',
-        'Equipamentos',
-        'Lataria/estado geral',
-      ];
+      if (isRetorno) {
+        itens = [
+          'Pneus',
+          'Freios',
+          'Óleo/Água',
+          'Luzes',
+          'Sirene/Giroflex',
+          'Vidros/retrovisores',
+          'Equipamentos',
+          'Lataria/novas avarias',
+          'Limpeza interna/cabine',
+          'Combustível conferido',
+        ];
+      } else {
+        itens = [
+          'Pneus',
+          'Freios',
+          'Óleo/Água',
+          'Luzes',
+          'Sirene/Giroflex',
+          'Vidros/retrovisores',
+          'Equipamentos',
+          'Lataria/estado geral',
+        ];
+      }
     }
 
     for (final item in itens) {
       respostas[item] = 'OK';
+      obsItensControllers[item] = TextEditingController();
     }
   }
 
   bool get existeProblema => respostas.values.contains('PROBLEMA');
 
+  List<Map<String, String>> _montarListaItens() {
+    return itens.map((item) {
+      final st = respostas[item] ?? 'OK';
+      final obsItem = st == 'PROBLEMA'
+          ? (obsItensControllers[item]?.text.trim() ?? '')
+          : '';
+      return {
+        'item': item,
+        'status': st,
+        'observacao': obsItem,
+      };
+    }).toList();
+  }
+
+  String _montarResumoProblemas(List<Map<String, String>> itensJson) {
+    final problemas = <String>[];
+    for (final it in itensJson) {
+      if (it['status'] == 'PROBLEMA') {
+        final nome = it['item'] ?? '';
+        final obs = it['observacao'] ?? '';
+        problemas.add(obs.isNotEmpty ? '$nome ($obs)' : nome);
+      }
+    }
+    final obsGeral = observacaoController.text.trim();
+    if (problemas.isEmpty && obsGeral.isEmpty) return '';
+    final buffer = StringBuffer();
+    if (problemas.isNotEmpty) {
+      buffer.write('Itens com problema: ${problemas.join(", ")}');
+    }
+    if (obsGeral.isNotEmpty) {
+      if (buffer.isNotEmpty) buffer.write('. ');
+      buffer.write('Obs: $obsGeral');
+    }
+    return buffer.toString();
+  }
+
   Future<void> selecionarFoto() async {
     if (salvando) return;
 
     if (fotos.length >= 5) {
-      mostrarMensagem('VocÃª pode enviar no mÃ¡ximo 5 fotos.');
+      mostrarMensagem('Você pode enviar no máximo 5 fotos.');
       return;
     }
 
@@ -866,8 +966,7 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
         fotos.add(File(imagem.path));
       });
     } catch (e) {
-      if (!mounted) return;
-      mostrarMensagem('NÃ£o foi possÃ­vel abrir a cÃ¢mera.');
+      mostrarMensagem('Erro ao abrir a câmera: $e');
       debugPrint('ERRO FOTO CHECKLIST: $e');
     }
   }
@@ -876,7 +975,7 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
     if (salvando) return;
 
     if (fotos.length >= 5) {
-      mostrarMensagem('VocÃª pode enviar no mÃ¡ximo 5 fotos.');
+      mostrarMensagem('Você pode enviar no máximo 5 fotos.');
       return;
     }
 
@@ -887,27 +986,28 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
         maxHeight: 1600,
       );
 
-      if (!mounted || imagens.isEmpty) return;
+      if (imagens.isEmpty || !mounted) return;
 
-      final restantes = 5 - fotos.length;
-      final selecionadas = imagens.take(restantes);
+      final espacoRestante = 5 - fotos.length;
+      final selecionadas = imagens.take(espacoRestante).toList();
 
       setState(() {
-        fotos.addAll(selecionadas.map((item) => File(item.path)));
+        for (final img in selecionadas) {
+          fotos.add(File(img.path));
+        }
       });
 
-      if (imagens.length > restantes) {
+      if (imagens.length > espacoRestante) {
         mostrarMensagem('Apenas 5 fotos podem ser enviadas por checklist.');
       }
     } catch (e) {
-      if (!mounted) return;
-      mostrarMensagem('NÃ£o foi possÃ­vel abrir a galeria.');
+      mostrarMensagem('Erro ao abrir a galeria: $e');
       debugPrint('ERRO GALERIA CHECKLIST: $e');
     }
   }
 
   void removerFoto(int index) {
-    if (salvando || !mounted) return;
+    if (salvando) return;
 
     setState(() {
       fotos.removeAt(index);
@@ -922,12 +1022,12 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
     final viaturaId = widget.viatura['id']?.toString();
 
     if (matriculaPolicial.isEmpty) {
-      mostrarMensagem('UsuÃ¡rio nÃ£o identificado.');
+      mostrarMensagem('Usuário não identificado.');
       return;
     }
 
     if (viaturaId == null || viaturaId.isEmpty) {
-      mostrarMensagem('ID da viatura nÃ£o encontrado.');
+      mostrarMensagem('ID da viatura não encontrado.');
       return;
     }
 
@@ -946,26 +1046,26 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
     });
 
     try {
-      final itensJson = itens.map((item) {
-        return {
-          'item': item,
-          'status': respostas[item] ?? 'OK',
-          'observacao': '',
-        };
-      }).toList();
+      final itensJson = _montarListaItens();
+      final resumoProblemas = _montarResumoProblemas(itensJson);
 
-      final km =
-          int.tryParse(widget.viatura['km_atual']?.toString() ?? '') ?? 0;
+      final km = widget.kmReferencia ??
+          (int.tryParse(widget.viatura['km_atual']?.toString() ?? '') ?? 0);
 
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse(ApiConfig.checklistsUri.toString()),
+        ApiConfig.checklistsUri,
       );
+
+      final authHeaders =
+          await SessionManager.getAuthHeaders(includeJsonContentType: false);
+      request.headers.addAll(authHeaders);
 
       request.fields['viatura_id'] = viaturaId;
       request.fields['policial_matricula'] = matriculaPolicial;
       request.fields['km'] = km.toString();
       request.fields['status'] = existeProblema ? 'PROBLEMA' : 'OK';
+      request.fields['tipo'] = widget.tipoChecklist;
       request.fields['observacao'] = observacaoController.text.trim();
       request.fields['itens'] = jsonEncode(itensJson);
 
@@ -983,46 +1083,131 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
 
       if (!mounted) return;
 
-      debugPrint(
-        'CHECKLIST STATUS: '
-        '${resposta.statusCode}',
-      );
-
       if (resposta.statusCode != 201) {
         setState(() {
           salvando = false;
         });
 
         String mensagem = 'Erro ao salvar checklist.';
-
         try {
           final data = jsonDecode(resposta.body);
-
           mensagem = data['mensagem']?.toString() ?? mensagem;
         } catch (_) {}
 
-        mostrarMensagem(
-          '$mensagem\n'
-          'CÃ³digo: ${resposta.statusCode}',
-        );
-
+        mostrarMensagem('$mensagem\nCódigo: ${resposta.statusCode}');
         return;
       }
 
       final resultado = Map<String, dynamic>.from(widget.viatura);
-
+      resultado['tipo_checklist'] = widget.tipoChecklist;
       resultado['checklist_status'] = existeProblema ? 'PROBLEMA' : 'OK';
-
       resultado['checklist_observacao'] = observacaoController.text.trim();
-
       resultado['checklist_fotos'] = fotos.map((foto) => foto.path).toList();
+      resultado['checklist_km'] = km;
+      resultado['checklist_itens'] = itensJson;
+      if (resumoProblemas.isNotEmpty) {
+        resultado['checklist_resumo_problemas'] = resumoProblemas;
+      }
 
-      /*
-       * SÃ³ agora fechamos o checklist.
-       *
-       * NÃ£o hÃ¡ setState depois do pop.
-       */
-      Navigator.of(context).pop(resultado);
+      setState(() {
+        salvando = false;
+      });
+
+      final tituloDialog = isRetorno
+          ? 'Checklist de Devolução Concluído!'
+          : 'Checklist de Assunção Concluído!';
+
+      final tipoTexto = isRetorno
+          ? 'Devolução (Término de Serviço)'
+          : 'Assunção (Ao Pegar Viatura)';
+
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogCtx) => AlertDialog(
+          icon: const Icon(Icons.check_circle, color: Colors.green, size: 48),
+          title: Text(tituloDialog),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Vistoria de $tipoTexto finalizada com sucesso!',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blueGrey.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.description, color: Colors.blue),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Viatura: ${widget.viatura['prefixo'] ?? ''} (${widget.viatura['placa'] ?? ''})\n'
+                        'Vistoria: $tipoTexto\n'
+                        'Status: ${existeProblema ? "PROBLEMA" : "OK"}\n'
+                        'KM: $km km',
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Deseja enviar a planilha Excel (.xlsx) para o WhatsApp do Chefe da Companhia (+55 71 99988-1574)?',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13),
+              ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actionsOverflowButtonSpacing: 8,
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366),
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+                onPressed: () async {
+                  Navigator.of(dialogCtx).pop();
+                  await _compartilharArquivoExcelChecklist(
+                    prefixo: widget.viatura['prefixo']?.toString() ?? '',
+                    placa: widget.viatura['placa']?.toString() ?? '',
+                    status: existeProblema ? 'PROBLEMA' : 'OK',
+                    km: km.toString(),
+                    observacao: observacaoController.text.trim(),
+                  );
+                  if (mounted) {
+                    Navigator.of(context).pop(resultado);
+                  }
+                },
+                icon: const Icon(Icons.share),
+                label: const Text('ENVIAR ARQUIVO EXCEL NO WHATSAPP (.XLSX)'),
+              ),
+            ),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () {
+                  Navigator.of(dialogCtx).pop();
+                  Navigator.of(context).pop(resultado);
+                },
+                child: const Text('CONCLUIR SEM ENVIAR'),
+              ),
+            ),
+          ],
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
 
@@ -1030,9 +1215,53 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
         salvando = false;
       });
 
-      mostrarMensagem('Erro de conexÃ£o com o servidor.');
-
+      mostrarMensagem('Erro de conexão com o servidor.');
       debugPrint('ERRO CHECKLIST: $e');
+    }
+  }
+
+  Future<void> _compartilharArquivoExcelChecklist({
+    required String prefixo,
+    required String placa,
+    required String status,
+    required String km,
+    required String observacao,
+  }) async {
+    try {
+      final matriculaPolicial = await SessionManager.getMatricula();
+      final nomePolicial = await SessionManager.getNome();
+
+      final listaItens = _montarListaItens();
+
+      final arquivoExcel = await ExcelExporter.gerarExcelChecklist(
+        viatura: widget.viatura,
+        matriculaPolicial: matriculaPolicial,
+        nomePolicial: nomePolicial,
+        statusGeral: status,
+        km: km,
+        observacao: observacao,
+        itens: listaItens,
+        tipo: widget.tipoChecklist,
+      );
+
+      final tipoTitulo = isRetorno
+          ? '🏁 *CHECKLIST DE DEVOLUÇÃO (AO TERMINAR SERVIÇO)*'
+          : '📋 *CHECKLIST DE ASSUNÇÃO (AO PEGAR VIATURA)*';
+
+      final texto = '🚨 *PMBA - CONTROLE DE FROTA* 🚨\n'
+          '$tipoTitulo\n\n'
+          '🚗 *Viatura:* $prefixo (Placa: $placa)\n'
+          '👮 *Policial:* $nomePolicial (Mat.: $matriculaPolicial)\n'
+          '📊 *Status Geral:* ${status == "OK" ? "✅ APROVADO" : "⚠️ COM PROBLEMA"}\n'
+          '🛣️ *${isRetorno ? "KM Final (Devolução)" : "KM Inicial (Assunção)"}:* $km km\n\n'
+          '📎 Segue em anexo a planilha Excel (.xlsx) oficial do checklist gerada pelo aplicativo.';
+
+      await ExcelExporter.compartilharExcel(
+        arquivoExcel: arquivoExcel,
+        textoMensagem: texto,
+      );
+    } catch (e) {
+      mostrarMensagem('Erro ao gerar/compartilhar planilha Excel: $e');
     }
   }
 
@@ -1045,6 +1274,9 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
 
   @override
   void dispose() {
+    for (final ctrl in obsItensControllers.values) {
+      ctrl.dispose();
+    }
     observacaoController.dispose();
     super.dispose();
   }
@@ -1052,21 +1284,60 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
   @override
   Widget build(BuildContext context) {
     final prefixo = widget.viatura['prefixo']?.toString() ?? '-';
-
     final placa = widget.viatura['placa']?.toString() ?? '-';
-
     final tipo = (widget.viatura['tipo']?.toString() ?? 'CARRO').toUpperCase();
+    final kmExibido = widget.kmReferencia?.toString() ??
+        (widget.viatura['km_atual']?.toString() ?? '0');
 
-    final km = widget.viatura['km_atual']?.toString() ?? '0';
+    final tituloPagina = isRetorno
+        ? 'Checklist de Devolução (Término)'
+        : 'Checklist de Saída (Pegar Viatura)';
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(title: const Text('Checklist')),
+      appBar: AppBar(title: Text(tituloPagina)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isRetorno
+                    ? Colors.teal.withValues(alpha: 0.15)
+                    : Colors.blue.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isRetorno ? Colors.teal : Colors.blue,
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isRetorno
+                        ? Icons.assignment_return
+                        : Icons.assignment_turned_in,
+                    color: isRetorno ? Colors.teal : Colors.blue,
+                    size: 26,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      isRetorno
+                          ? 'Vistoria de Encerramento: inspecione as condições da viatura na devolução ao final do serviço.'
+                          : 'Vistoria de Assunção: inspecione as condições da viatura antes de iniciar o turno de serviço.',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             Card(
               child: ListTile(
                 leading: CircleAvatar(
@@ -1082,55 +1353,73 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
                   ),
                 ),
                 subtitle: Text(
-                  '$tipo ? $placa\n'
-                  'KM: $km',
+                  '$tipo • $placa\n'
+                  'KM ${isRetorno ? "Final" : "Inicial"}: $kmExibido km',
                 ),
               ),
             ),
 
             const SizedBox(height: 18),
 
-            const Text(
-              'Checklist da viatura',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            Text(
+              isRetorno
+                  ? 'Itens de Vistoria na Devolução'
+                  : 'Itens de Vistoria na Assunção',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 15),
 
             ...itens.map((item) {
               final resposta = respostas[item] ?? 'OK';
-
               final problema = resposta == 'PROBLEMA';
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  leading: Icon(
-                    problema ? Icons.warning : Icons.check_circle,
-                    color: problema ? Colors.red : Colors.green,
-                  ),
-                  title: Text(item),
-                  trailing: DropdownButton<String>(
-                    value: resposta,
-                    items: const [
-                      DropdownMenuItem(value: 'OK', child: Text('OK')),
-                      DropdownMenuItem(
-                        value: 'PROBLEMA',
-                        child: Text('PROBLEMA'),
+                child: Column(
+                  children: [
+                    ListTile(
+                      leading: Icon(
+                        problema ? Icons.warning : Icons.check_circle,
+                        color: problema ? Colors.red : Colors.green,
                       ),
-                    ],
-                    onChanged: salvando
-                        ? null
-                        : (valor) {
-                            if (valor == null) {
-                              return;
-                            }
+                      title: Text(item),
+                      trailing: DropdownButton<String>(
+                        value: resposta,
+                        items: const [
+                          DropdownMenuItem(value: 'OK', child: Text('OK')),
+                          DropdownMenuItem(
+                            value: 'PROBLEMA',
+                            child: Text('PROBLEMA'),
+                          ),
+                        ],
+                        onChanged: salvando
+                            ? null
+                            : (valor) {
+                                if (valor == null) {
+                                  return;
+                                }
 
-                            setState(() {
-                              respostas[item] = valor;
-                            });
-                          },
-                  ),
+                                setState(() {
+                                  respostas[item] = valor;
+                                });
+                              },
+                      ),
+                    ),
+                    if (problema)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: TextField(
+                          controller: obsItensControllers[item],
+                          enabled: !salvando,
+                          decoration: InputDecoration(
+                            labelText: 'Qual o problema em $item? (opcional)',
+                            isDense: true,
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               );
             }),
@@ -1154,8 +1443,8 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
               maxLines: 4,
               decoration: InputDecoration(
                 labelText: existeProblema
-                    ? 'Descreva o problema *'
-                    : 'ObservaÃ§Ã£o geral',
+                    ? 'Descreva o problema encontrado *'
+                    : 'Observações gerais da vistoria',
                 border: const OutlineInputBorder(),
               ),
             ),
@@ -1176,7 +1465,7 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
                     SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Foi encontrada uma irregularidade. A observaÃ§Ã£o Ã© obrigatÃ³ria.',
+                        'Foi encontrada uma irregularidade. A observação e pelo menos 1 foto são obrigatórias.',
                         style: TextStyle(
                           color: Colors.red,
                           fontWeight: FontWeight.bold,
@@ -1201,12 +1490,324 @@ class _ChecklistViaturaPageState extends State<ChecklistViaturaPage> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.check),
-                label: Text(salvando ? 'SALVANDO...' : 'FINALIZAR CHECKLIST'),
+                label: Text(
+                  salvando
+                      ? 'SALVANDO VISTORIA...'
+                      : (isRetorno
+                          ? 'CONCLUIR VISTORIA DE DEVOLUÇÃO'
+                          : 'CONCLUIR VISTORIA DE ASSUNÇÃO'),
+                ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/* =========================================================
+   HISTÓRICO DE CHECKLISTS / VISTORIAS DA VIATURA
+========================================================= */
+
+class HistoricoChecklistsViaturaPage extends StatefulWidget {
+  final Map<String, dynamic> viatura;
+
+  const HistoricoChecklistsViaturaPage({super.key, required this.viatura});
+
+  @override
+  State<HistoricoChecklistsViaturaPage> createState() =>
+      _HistoricoChecklistsViaturaPageState();
+}
+
+class _HistoricoChecklistsViaturaPageState
+    extends State<HistoricoChecklistsViaturaPage> {
+  List<ChecklistViaturaModel> checklists = [];
+  bool carregando = true;
+  String erro = '';
+
+  @override
+  void initState() {
+    super.initState();
+    carregarChecklists();
+  }
+
+  Future<void> carregarChecklists() async {
+    if (!mounted) return;
+
+    setState(() {
+      carregando = true;
+      erro = '';
+    });
+
+    final id = widget.viatura['id']?.toString() ?? '';
+    if (id.isEmpty) {
+      setState(() {
+        carregando = false;
+        erro = 'ID da viatura não encontrado.';
+      });
+      return;
+    }
+
+    try {
+      final headers = await SessionManager.getAuthHeaders();
+      final response = await http
+          .get(
+            ApiConfig.checklistsViaturaUri(id),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 12));
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is List) {
+          setState(() {
+            checklists = data
+                .whereType<Map>()
+                .map((item) => ChecklistViaturaModel.fromMap(
+                    Map<String, dynamic>.from(item)))
+                .toList();
+            carregando = false;
+          });
+          return;
+        }
+      }
+
+      setState(() {
+        carregando = false;
+        erro = 'Erro ao carregar vistorias (Código: ${response.statusCode}).';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        carregando = false;
+        erro = 'Não foi possível conectar ao servidor.';
+      });
+      debugPrint('ERRO HISTORICO CHECKLIST: $e');
+    }
+  }
+
+  String _formatarDataHora(DateTime? data) {
+    if (data == null) return '-';
+    final local = data.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}/'
+        '${local.month.toString().padLeft(2, '0')}/'
+        '${local.year} '
+        '${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _abrirFotoAmpliada(String urlFoto) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          children: [
+            InteractiveViewer(
+              child: Center(
+                child: Image.network(
+                  urlFoto,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'Não foi possível carregar a imagem.',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                icon: const Icon(Icons.close, color: Colors.white, size: 28),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final prefixo = widget.viatura['prefixo']?.toString() ?? '-';
+    final placa = widget.viatura['placa']?.toString() ?? '-';
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text('Vistorias • $prefixo ($placa)'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: carregando ? null : carregarChecklists,
+          ),
+        ],
+      ),
+      body: carregando
+          ? const Center(child: CircularProgressIndicator())
+          : erro.isNotEmpty
+          ? RefreshIndicator(
+              onRefresh: carregarChecklists,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  const SizedBox(height: 180),
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Text(erro, textAlign: TextAlign.center),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : checklists.isEmpty
+          ? RefreshIndicator(
+              onRefresh: carregarChecklists,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 180),
+                  Center(
+                    child: Text('Nenhuma vistoria registrada para esta viatura.'),
+                  ),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: carregarChecklists,
+              child: ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: checklists.length,
+                itemBuilder: (context, index) {
+                  final chk = checklists[index];
+                  final problema = chk.temProblema;
+                  final tipoLabel = chk.isRetorno ? 'DEVOLUÇÃO' : 'SAÍDA';
+                  final kmTexto = chk.km == chk.km.roundToDouble()
+                      ? chk.km.toInt().toString()
+                      : chk.km.toStringAsFixed(1);
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: ExpansionTile(
+                      leading: Icon(
+                        problema ? Icons.warning : Icons.check_circle,
+                        color: problema ? Colors.red : Colors.green,
+                      ),
+                      title: Text(
+                        '$tipoLabel • ${chk.status}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: problema ? Colors.redAccent : Colors.greenAccent,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '${_formatarDataHora(chk.dataChecklist)} • KM: $kmTexto km\n'
+                        'Matrícula: ${chk.policialMatricula}',
+                      ),
+                      childrenPadding:
+                          const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      children: [
+                        const Divider(),
+                        if (chk.observacao.isNotEmpty) ...[
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Observação geral: ${chk.observacao}',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                        if (chk.itens.isNotEmpty) ...[
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Itens avaliados:',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          ...chk.itens.map((it) {
+                            final ok = it.isOk;
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    ok ? Icons.check : Icons.close,
+                                    size: 16,
+                                    color: ok ? Colors.green : Colors.red,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      it.observacao.isNotEmpty
+                                          ? '${it.item} — ${it.status} (${it.observacao})'
+                                          : '${it.item} — ${it.status}',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                        ],
+                        if (chk.fotos.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Fotos anexadas:',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 100,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: chk.fotos.length,
+                              itemBuilder: (context, fotoIdx) {
+                                final url = ApiConfig.urlFoto(chk.fotos[fotoIdx]);
+                                return GestureDetector(
+                                  onTap: () => _abrirFotoAmpliada(url),
+                                  child: Container(
+                                    width: 100,
+                                    margin: const EdgeInsets.only(right: 8),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.network(
+                                        url,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, _, _) => Container(
+                                          color: Colors.black26,
+                                          child: const Icon(Icons.broken_image),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
     );
   }
 }
