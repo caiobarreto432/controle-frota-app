@@ -1,12 +1,6 @@
--- ============================================================================
--- PROJETO: Sistema de Controle de Frota PMBA (Controle de Viaturas)
--- DISCIPLINA: Banco de Dados - Prof. Vagner
--- AUTOR: Caio Barreto
--- SGBD: PostgreSQL 15+
--- SCRIPT: 01_ddl.sql (Data Definition Language - Criação de Tabelas e Índices)
--- ============================================================================
+-- Controle de Frota PMBA (PostgreSQL 15+)
+-- 01_ddl.sql: criação das tabelas, chaves, constraints e índices
 
--- Limpeza opcional para reexecução em ambiente de testes
 DROP TABLE IF EXISTS checklist_fotos CASCADE;
 DROP TABLE IF EXISTS checklist_itens CASCADE;
 DROP TABLE IF EXISTS checklists_viatura CASCADE;
@@ -14,10 +8,7 @@ DROP TABLE IF EXISTS registros_servico CASCADE;
 DROP TABLE IF EXISTS policiais CASCADE;
 DROP TABLE IF EXISTS viaturas CASCADE;
 
--- ============================================================================
--- 1. TABELA: viaturas
--- Armazena o cadastro de veículos operacionais (carros e motos) da companhia.
--- ============================================================================
+-- 1. viaturas
 CREATE TABLE viaturas (
     id                      SERIAL PRIMARY KEY,
     prefixo                 VARCHAR(10) NOT NULL UNIQUE,
@@ -38,10 +29,7 @@ CREATE TABLE viaturas (
 
 COMMENT ON TABLE viaturas IS 'Cadastro oficial das viaturas da frota operacional (carros e motos).';
 
--- ============================================================================
--- 2. TABELA: policiais
--- Armazena os militares autorizados a acessar o sistema (ADMIN e POLICIAL).
--- ============================================================================
+-- 2. policiais
 CREATE TABLE policiais (
     id                      SERIAL PRIMARY KEY,
     nome                    VARCHAR(200) NOT NULL,
@@ -59,10 +47,7 @@ CREATE TABLE policiais (
 
 COMMENT ON TABLE policiais IS 'Efetivo policial com acesso autenticado ao sistema de controle de frota.';
 
--- ============================================================================
--- 3. TABELA: checklists_viatura
--- Cabeçalho das vistorias realizadas ao pegar (SAIDA) e devolver (RETORNO) a viatura.
--- ============================================================================
+-- 3. checklists_viatura
 CREATE TABLE checklists_viatura (
     id                      SERIAL PRIMARY KEY,
     viatura_id              INTEGER NOT NULL REFERENCES viaturas(id) ON DELETE CASCADE,
@@ -78,10 +63,7 @@ CREATE TABLE checklists_viatura (
 
 COMMENT ON TABLE checklists_viatura IS 'Registro de vistorias operacionais na assunção (SAIDA) e devolução (RETORNO) da viatura.';
 
--- ============================================================================
--- 4. TABELA: checklist_itens
--- Detalhamento individual de cada item inspecionado em um checklist.
--- ============================================================================
+-- 4. checklist_itens
 CREATE TABLE checklist_itens (
     id                      SERIAL PRIMARY KEY,
     checklist_id            INTEGER NOT NULL REFERENCES checklists_viatura(id) ON DELETE CASCADE,
@@ -93,10 +75,7 @@ CREATE TABLE checklist_itens (
 
 COMMENT ON TABLE checklist_itens IS 'Itens individuais avaliados em cada checklist (pneus, freios, luzes, sirene, limpeza, etc.).';
 
--- ============================================================================
--- 5. TABELA: checklist_fotos
--- Evidências fotográficas (até 5 por checklist) anexadas quando há avaria/problema.
--- ============================================================================
+-- 5. checklist_fotos
 CREATE TABLE checklist_fotos (
     id                      SERIAL PRIMARY KEY,
     checklist_id            INTEGER NOT NULL REFERENCES checklists_viatura(id) ON DELETE CASCADE,
@@ -106,10 +85,7 @@ CREATE TABLE checklist_fotos (
 
 COMMENT ON TABLE checklist_fotos IS 'Caminhos/URLs das fotos comprobatórias anexadas a um checklist com irregularidade.';
 
--- ============================================================================
--- 6. TABELA: registros_servico
--- Registro consolidado do turno/serviço com quilometragem, abastecimento e ocorrências.
--- ============================================================================
+-- 6. registros_servico
 CREATE TABLE registros_servico (
     id                      SERIAL PRIMARY KEY,
     nome_policial           VARCHAR(200) NOT NULL,
@@ -128,9 +104,7 @@ CREATE TABLE registros_servico (
 
 COMMENT ON TABLE registros_servico IS 'Registros de turno de uso das viaturas (combustivel_inicial armazena litros e combustivel_final armazena valor em R$).';
 
--- ============================================================================
--- 7. ÍNDICES DE PERFORMANCE
--- ============================================================================
+-- 7. índices B-Tree
 CREATE INDEX idx_registros_matricula          ON registros_servico(matricula);
 CREATE INDEX idx_registros_criado_em          ON registros_servico(criado_em DESC);
 CREATE INDEX idx_viaturas_prefixo             ON viaturas(prefixo);

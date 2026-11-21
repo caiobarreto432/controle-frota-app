@@ -1,14 +1,7 @@
--- ============================================================================
--- PROJETO: Sistema de Controle de Frota PMBA (Controle de Viaturas)
--- DISCIPLINA: Banco de Dados - Prof. Vagner
--- AUTOR: Caio Barreto
--- SGBD: PostgreSQL 15+
--- SCRIPT: 02_dml.sql (Data Manipulation Language - Carga de Dados, UPDATE e DELETE)
--- ============================================================================
+-- Controle de Frota PMBA (PostgreSQL 15+)
+-- 02_dml.sql: carga inicial de exemplo, atualizações e remoção pontual
 
--- ============================================================================
--- 1. CARGA INICIAL DE POLICIAIS (INSERT)
--- ============================================================================
+-- 1. policiais
 INSERT INTO policiais (nome, matricula, senha, perfil, ativo, patente, email, numero_celular) VALUES
 ('Caio Barreto',       '301001', '$2b$10$hashExemploAdmin001',    'ADMIN',    TRUE, 'Capitão PM',  'caio.barreto@pmba.ba.gov.br',   '71999881574'),
 ('Lucas Santana',      '302045', '$2b$10$hashExemploPolicial002', 'POLICIAL', TRUE, 'Soldado PM',  'lucas.santana@pmba.ba.gov.br',  '71991234567'),
@@ -16,9 +9,7 @@ INSERT INTO policiais (nome, matricula, senha, perfil, ativo, patente, email, nu
 ('Rafael Costa',       '302112', '$2b$10$hashExemploPolicial004', 'POLICIAL', TRUE, 'Sargento PM', 'rafael.costa@pmba.ba.gov.br',   '71993456789'),
 ('Thiago Almeida',     '302199', '$2b$10$hashExemploPolicial005', 'POLICIAL', TRUE, 'Soldado PM',  'thiago.almeida@pmba.ba.gov.br', '71994567890');
 
--- ============================================================================
--- 2. CARGA INICIAL DE VIATURAS (INSERT)
--- ============================================================================
+-- 2. viaturas
 INSERT INTO viaturas (prefixo, placa, chassi, marca, modelo, tipo, ano_fabricacao, km_atual, km_proxima_manutencao, status, ativo, observacao) VALUES
 ('VTR-01', 'PKZ1A23', '9BG148FK0MC100001', 'Chevrolet', 'S10 4x4',       'CARRO', 2023, 45200, 50000, 'DISPONÍVEL',    TRUE, 'Viatura de radiopatrulhamento setor norte.'),
 ('VTR-02', 'QTW4B56', '9BWAB45U7NP200002', 'Renault',   'Duster 1.6',    'CARRO', 2022, 69400, 70000, 'DISPONÍVEL',    TRUE, 'Próxima da revisão preventiva de 70.000 km.'),
@@ -26,9 +17,7 @@ INSERT INTO viaturas (prefixo, placa, chassi, marca, modelo, tipo, ano_fabricaca
 ('MOT-01', 'SLA2D10', '9C2ND1110PR400004', 'Honda',     'XRE 300',       'MOTO',  2023, 18250, 20000, 'DISPONÍVEL',    TRUE, 'Motopatrulhamento tático.'),
 ('MOT-02', 'TMB9E34', '9C2ND1110PR400005', 'Yamaha',    'Lander 250',    'MOTO',  2022, 24800, 25000, 'RESERVA',       TRUE, 'Moto reserva da companhia.');
 
--- ============================================================================
--- 3. CHECKLISTS DE SAÍDA E DEVOLUÇÃO (INSERT)
--- ============================================================================
+-- 3. checklists_viatura (saída e devolução)
 -- Checklist 1: Saída da VTR-01 (OK)
 INSERT INTO checklists_viatura (viatura_id, policial_matricula, km, status, tipo, observacao, data_checklist) VALUES
 (1, '302045', 45000, 'OK', 'SAIDA', 'Viatura recebida em perfeitas condições.', '2026-11-18 07:00:00');
@@ -53,9 +42,7 @@ INSERT INTO checklists_viatura (viatura_id, policial_matricula, km, status, tipo
 INSERT INTO checklists_viatura (viatura_id, policial_matricula, km, status, tipo, observacao, data_checklist) VALUES
 (4, '302112', 18250, 'PROBLEMA', 'RETORNO', 'Folga no retrovisor persiste; encaminhar à oficina.', '2026-11-20 16:00:00');
 
--- ============================================================================
--- 4. ITENS DOS CHECKLISTS (INSERT)
--- ============================================================================
+-- 4. checklist_itens
 -- Itens do Checklist 1 (VTR-01 - SAIDA)
 INSERT INTO checklist_itens (checklist_id, item, status, observacao) VALUES
 (1, 'Pneus',                'OK', ''),
@@ -91,19 +78,14 @@ INSERT INTO checklist_itens (checklist_id, item, status, observacao) VALUES
 (5, 'Equipamentos',          'OK',       ''),
 (5, 'Corrente/estado geral', 'OK',       '');
 
--- ============================================================================
--- 5. FOTOS DE EVIDÊNCIA DOS CHECKLISTS COM PROBLEMA (INSERT)
--- ============================================================================
+-- 5. checklist_fotos
 INSERT INTO checklist_fotos (checklist_id, foto) VALUES
 (2, 'uploads/checklists/vtr01_farol_direito_01.jpg'),
 (2, 'uploads/checklists/vtr01_farol_direito_02.jpg'),
 (5, 'uploads/checklists/mot01_retrovisor_esq_01.jpg'),
 (6, 'uploads/checklists/mot01_retrovisor_devolucao_01.jpg');
 
--- ============================================================================
--- 6. REGISTROS DE SERVIÇO (INSERT)
--- Obs.: combustivel_inicial = litros abastecidos; combustivel_final = valor em R$
--- ============================================================================
+-- 6. registros_servico (combustivel_inicial = litros; combustivel_final = R$)
 INSERT INTO registros_servico (
     nome_policial, matricula, data_servico, prefixo_viatura, placa_viatura,
     km_inicial, km_final, combustivel_inicial, combustivel_final, ocorrencias, observacoes
@@ -119,9 +101,7 @@ INSERT INTO registros_servico (
 ('Lucas Santana',    '302045', '2026-11-20', 'VTR-01', 'PKZ1A23', 45200, 45380,  0.00,   0.00,
  '', 'Turno matutino sem necessidade de abastecimento.');
 
--- ============================================================================
--- 7. EXEMPLOS DE ATUALIZAÇÃO (UPDATE) E REMOÇÃO CONTROLADA (DELETE)
--- ============================================================================
+-- 7. atualizações e remoção pontual
 -- Atualiza o KM atual da VTR-01 após o turno de 20/11
 UPDATE viaturas
 SET km_atual = 45380

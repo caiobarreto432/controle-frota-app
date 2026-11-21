@@ -1,15 +1,7 @@
--- ============================================================================
--- PROJETO: Sistema de Controle de Frota PMBA (Controle de Viaturas)
--- DISCIPLINA: Banco de Dados - Prof. Vagner
--- AUTOR: Caio Barreto
--- SGBD: PostgreSQL 15+
--- SCRIPT: 03_dql.sql (Data Query Language - Consultas Analíticas e Operacionais)
--- ============================================================================
+-- Controle de Frota PMBA (PostgreSQL 15+)
+-- 03_dql.sql: consultas operacionais e analíticas
 
--- ----------------------------------------------------------------------------
--- Q01. Painel de Manutenção Preventiva das Viaturas Ativas
--- Calcula o KM restante e classifica cada viatura como VENCIDA, PROXIMA ou NORMAL.
--- ----------------------------------------------------------------------------
+-- Q01 - Manutenção preventiva das viaturas ativas
 SELECT
     prefixo,
     placa,
@@ -28,9 +20,7 @@ FROM viaturas
 WHERE ativo = TRUE
 ORDER BY km_restante ASC;
 
--- ----------------------------------------------------------------------------
--- Q02. Consolidado de Quilometragem e Abastecimento por Viatura (GROUP BY + SUM)
--- ----------------------------------------------------------------------------
+-- Q02 - Quilometragem e abastecimento acumulados por viatura
 SELECT
     v.prefixo,
     v.placa,
@@ -44,9 +34,7 @@ LEFT JOIN registros_servico r ON r.prefixo_viatura = v.prefixo
 GROUP BY v.id, v.prefixo, v.placa, v.modelo
 ORDER BY total_km_rodado DESC;
 
--- ----------------------------------------------------------------------------
--- Q03. Ranking de Policiais por Quilometragem Percorrida e Turnos Realizados
--- ----------------------------------------------------------------------------
+-- Q03 - Quilometragem percorrida e turnos por policial
 SELECT
     p.patente,
     p.nome,
@@ -59,9 +47,7 @@ INNER JOIN registros_servico r ON r.matricula = p.matricula
 GROUP BY p.patente, p.nome, p.matricula
 ORDER BY km_total_rodado DESC;
 
--- ----------------------------------------------------------------------------
--- Q04. Histórico Completo de Checklists (SAÍDA vs DEVOLUÇÃO) com JOIN Triplo
--- ----------------------------------------------------------------------------
+-- Q04 - Histórico completo de checklists (saída e devolução)
 SELECT
     c.id              AS checklist_id,
     c.data_checklist,
@@ -77,9 +63,7 @@ INNER JOIN viaturas v ON v.id = c.viatura_id
 INNER JOIN policiais p ON p.matricula = c.policial_matricula
 ORDER BY c.data_checklist DESC;
 
--- ----------------------------------------------------------------------------
--- Q05. Auditoria de Avarias: Itens com PROBLEMA e Quantidade de Fotos Anexadas
--- ----------------------------------------------------------------------------
+-- Q05 - Itens com problema e total de fotos anexadas
 SELECT
     v.prefixo,
     c.tipo            AS momento_vistoria,
@@ -97,9 +81,7 @@ WHERE ci.status = 'PROBLEMA'
 GROUP BY v.prefixo, c.tipo, c.data_checklist, p.nome, ci.item, ci.observacao
 ORDER BY c.data_checklist DESC;
 
--- ----------------------------------------------------------------------------
--- Q06. Detecção de Novas Avarias no Plantão (Saída OK → Devolução com PROBLEMA)
--- ----------------------------------------------------------------------------
+-- Q06 - Avarias surgidas durante o plantão (saída OK e retorno PROBLEMA)
 SELECT
     v.prefixo,
     p.nome                  AS policial,
@@ -120,9 +102,7 @@ WHERE c_saida.tipo = 'SAIDA'
   AND c_ret.tipo = 'RETORNO'
   AND c_ret.status = 'PROBLEMA';
 
--- ----------------------------------------------------------------------------
--- Q07. Viaturas com Custo de Abastecimento Acima de R$ 100,00 (HAVING)
--- ----------------------------------------------------------------------------
+-- Q07 - Viaturas com gasto de combustível acima de R$ 100,00
 SELECT
     prefixo_viatura,
     SUM(km_final - km_inicial)                                 AS km_rodados,
@@ -134,10 +114,7 @@ GROUP BY prefixo_viatura
 HAVING SUM(combustivel_final) > 100
 ORDER BY gasto_total_reais DESC;
 
--- ----------------------------------------------------------------------------
--- Q08. Consulta Estruturada com JSON_AGG (Padrão da API para o App Flutter)
--- Retorna os checklists de uma viatura já agregando itens e fotos em JSON.
--- ----------------------------------------------------------------------------
+-- Q08 - Checklists de uma viatura agregando itens e fotos em JSON (usado na API)
 SELECT
     c.id,
     c.viatura_id,
@@ -170,9 +147,7 @@ FROM checklists_viatura c
 WHERE c.viatura_id = 1
 ORDER BY c.data_checklist DESC;
 
--- ----------------------------------------------------------------------------
--- Q09. Distribuição do Efetivo Ativo por Perfil de Acesso (ADMIN vs POLICIAL)
--- ----------------------------------------------------------------------------
+-- Q09 - Quantidade de policiais ativos por perfil
 SELECT
     perfil,
     COUNT(*) AS total_ativos
@@ -180,9 +155,7 @@ FROM policiais
 WHERE ativo = TRUE
 GROUP BY perfil;
 
--- ----------------------------------------------------------------------------
--- Q10. Relatório de Turnos com Ocorrências / Avarias Registradas
--- ----------------------------------------------------------------------------
+-- Q10 - Turnos com ocorrências registradas
 SELECT
     data_servico,
     prefixo_viatura,
